@@ -17,6 +17,7 @@ class Editor {
     private var standardOutput: FileHandle
     private var term: termios
     private var screenSize: ScreenMatrix = .zero
+    private var cursorPosition: CGPoint = .zero
 
     init() {
         standardInput = FileHandle.standardInput
@@ -72,8 +73,16 @@ class Editor {
     func drawRows(bufferWriter: BufferWriter) {
         for index in 0..<screenSize.raw {
             if index == screenSize.raw / 3 {
-                let welcomeMessage = "ewis -- version \(Version.current.value)"
-                bufferWriter.append(text: String(welcomeMessage.prefix(min(welcomeMessage.count, Int(screenSize.column)))))
+                let versionString = "ewis -- version \(Version.current.value)"
+                let welcomeMessage = String(versionString.prefix(min(versionString.count, Int(screenSize.column))))
+                let padding = (Int(screenSize.column) - welcomeMessage.count) / 2
+                if padding > 0 {
+                    bufferWriter.append(text: "~")
+                    for _ in 0..<padding - 1 {
+                        bufferWriter.append(text: " ")
+                    }
+                }
+                bufferWriter.append(text: welcomeMessage)
             } else {
                 bufferWriter.append(text: "~")
             }
@@ -89,10 +98,9 @@ class Editor {
         let bufferWriter = BufferWriter(standardOutput: standardOutput)
 
         bufferWriter.append(command: .enterResetMode)
-        bufferWriter.append(command: .eraseInDisplay)
         bufferWriter.append(command: .repositionTheCursor)
         drawRows(bufferWriter: bufferWriter)
-        bufferWriter.append(command: .repositionTheCursor)
+        bufferWriter.append(command: .moveCursor(point: cursorPosition))
         bufferWriter.append(command: .enterSetMode)
         bufferWriter.flush()
     }
@@ -105,6 +113,14 @@ class Editor {
             refreshScreen()
             RawMode.disable(standardInput: standardInput, originalTerm: term)
             exit(EXIT_SUCCESS)
+        case Config.allowLeft:
+            cursorPosition = CGPoint(x: cursorPosition.x - 1, y: cursorPosition.y)
+        case Config.allowRight:
+            cursorPosition = CGPoint(x: cursorPosition.x + 1, y: cursorPosition.y)
+        case Config.allowUp:
+            cursorPosition = CGPoint(x: cursorPosition.x, y: cursorPosition.y - 1)
+        case Config.allowDown:
+            cursorPosition = CGPoint(x: cursorPosition.x, y: cursorPosition.y + 1)
         default: break
         }
     }
@@ -121,6 +137,33 @@ class Editor {
             }
         }
 
-        return char
+        if char == Character("\u{1b}").uint8Value {
+            var seq: [UInt8] = Array(repeating: 0x00, count: 3)
+
+            if read(standardInput.fileDescriptor, &seq[0], 1) != 1 {
+                return Character("\u{1b}").uint8Value
+            }
+            if read(standardInput.fileDescriptor, &seq[1], 1) != 1 {
+                return Character("\u{1b}").uint8Value
+            }
+
+            if seq[0] == Character("[").uint8Value {
+                switch seq[1] {
+                case Character("A").uint8Value:
+                    return Config.allowUp
+                case Character("B").uint8Value:
+                    return Config.allowDown
+                case Character("C").uint8Value:
+                    return Config.allowRight
+                case Character("D").uint8Value:
+                    return Config.allowLeft
+                default: break
+                }
+            }
+
+            return Character("\u{1b}").uint8Value
+        } else {
+            return char
+        }
     }
 }
