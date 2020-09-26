@@ -72,27 +72,27 @@ class Editor {
         }
     }
 
-    func drawRows() {
+    func drawRows(bufferWriter: BufferWriter) {
         for index in 0..<screenSize.raw {
-            write(standardOutput: standardOutput, string: "~")
+            bufferWriter.append(text: "~")
+            bufferWriter.append(command: .eraseInLine)
 
             if index < screenSize.raw - 1 {
-                write(standardOutput: standardOutput, string: "\r\n")
+                bufferWriter.append(text: "\r\n")
             }
         }
     }
 
     func refreshScreen() {
-        /*
-         ref: ANSI Escape Sequence
-         http://www.asthe.com/chongo/tech/comp/ansi_escapes.html
-         */
-        writeCommand(standardOutput: standardOutput, command: .eraseInDisplay)
-        writeCommand(standardOutput: standardOutput, command: .repositionTheCursor)
+        let bufferWriter = BufferWriter(standardOutput: standardOutput)
 
-        drawRows()
-
-        writeCommand(standardOutput: standardOutput, command: .repositionTheCursor)
+        bufferWriter.append(command: .enterResetMode)
+        bufferWriter.append(command: .eraseInDisplay)
+        bufferWriter.append(command: .repositionTheCursor)
+        drawRows(bufferWriter: bufferWriter)
+        bufferWriter.append(command: .repositionTheCursor)
+        bufferWriter.append(command: .enterSetMode)
+        bufferWriter.flush()
     }
 
     func processKeyPress() {
