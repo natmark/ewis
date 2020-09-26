@@ -74,7 +74,12 @@ class Editor {
 
     func drawRows(bufferWriter: BufferWriter) {
         for index in 0..<screenSize.raw {
-            bufferWriter.append(text: "~")
+            if index == screenSize.raw / 3 {
+                let welcomeMessage = "ewis -- version \(Version.current.value)"
+                bufferWriter.append(text: String(welcomeMessage.prefix(min(welcomeMessage.count, Int(screenSize.column)))))
+            } else {
+                bufferWriter.append(text: "~")
+            }
             bufferWriter.append(command: .eraseInLine)
 
             if index < screenSize.raw - 1 {
