@@ -21,7 +21,7 @@ class Editor {
     init() {
         standardInput = FileHandle.standardInput
         standardOutput = FileHandle.standardOutput
-        term = RawMode.enable(fileHandle: standardInput)
+        term = RawMode.enable(standardInput: standardInput)
         do {
             screenSize = try getWindowSize()
         } catch {
@@ -50,19 +50,16 @@ class Editor {
         }
 
         for i in 0..<buffer.count - 1 {
-            var char: UInt8 = 0x00
-            read(standardInput.fileDescriptor, &char, 1)
-
             if read(standardInput.fileDescriptor, &buffer[i], 1) != 1 { break }
             if buffer[i] == Character("R").key { break }
         }
 
-        if buffer[0] != 0x1b || buffer[1] != Character("[").uint8Value {
+        if buffer.count > 2 && (buffer[0] != Character("\u{1b}").uint8Value || buffer[1] != Character("[").uint8Value) {
             throw EditorError.couldNotGetCursorPosition
         }
 
         if
-            let matrix = String(bytes: buffer.dropFirst(2), encoding: .utf8)?.trimmingCharacters(in: .controlCharacters).split(separator: ";"),
+            let matrix = String(bytes: buffer.dropFirst(2), encoding: .utf8)?.trimmingCharacters(in: .controlCharacters).replacingOccurrences(of: "R", with: "").split(separator: ";"),
             matrix.count == 2,
             let raw = UInt16(String(matrix[0])),
             let column = UInt16(String(matrix[1])) {
@@ -106,7 +103,7 @@ class Editor {
         switch char {
         case Config.quitKey:
             refreshScreen()
-            RawMode.disable(fileHandle: standardInput, originalTerm: term)
+            RawMode.disable(standardInput: standardInput, originalTerm: term)
             exit(EXIT_SUCCESS)
         default: break
         }

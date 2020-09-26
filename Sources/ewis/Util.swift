@@ -1,7 +1,8 @@
 import Foundation
 
 func exitFailure(_ errorMessage: String) {
-    Editor.shared.refreshScreen()
+    writeCommand(standardOutput: FileHandle.standardOutput, command: .eraseInDisplay)
+    writeCommand(standardOutput: FileHandle.standardOutput, command: .repositionTheCursor)
     StandardError.write(errorMessage)
     exit(EXIT_FAILURE)
 }

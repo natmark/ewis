@@ -1,12 +1,12 @@
 import Foundation
 
 struct RawMode {
-    static func enable(fileHandle: FileHandle) -> termios {
+    static func enable(standardInput: FileHandle) -> termios {
         let structPointer = UnsafeMutablePointer<termios>.allocate(capacity: 1)
         var raw = structPointer.pointee
         structPointer.deallocate()
 
-        if tcgetattr(fileHandle.fileDescriptor, &raw) == -1 {
+        if tcgetattr(standardInput.fileDescriptor, &raw) == -1 {
             exitFailure("tcgetattr")
         }
 
@@ -22,16 +22,16 @@ struct RawMode {
         raw.c_cc.16 = 0 // VMIN
         raw.c_cc.17 = 1 // VTIME
 
-        if tcsetattr(fileHandle.fileDescriptor, TCSAFLUSH, &raw) == -1 {
+        if tcsetattr(standardInput.fileDescriptor, TCSAFLUSH, &raw) == -1 {
             exitFailure("tcsetattr")
         }
 
         return original
     }
 
-    static func disable(fileHandle: FileHandle, originalTerm: termios) {
+    static func disable(standardInput: FileHandle, originalTerm: termios) {
         var term = originalTerm
-        if tcsetattr(fileHandle.fileDescriptor, TCSAFLUSH, &term) == -1 {
+        if tcsetattr(standardInput.fileDescriptor, TCSAFLUSH, &term) == -1 {
             exitFailure("tcsetattr")
         }
     }
