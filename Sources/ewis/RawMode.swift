@@ -7,12 +7,13 @@ struct RawMode {
         structPointer.deallocate()
 
         if tcgetattr(fileHandle.fileDescriptor, &raw) == -1 {
-            StandardError.write("tcgetattr")
-            exit(1)
+            exitFailure("tcgetattr")
         }
 
         let original = raw
 
+        // termios(3)
+        // https://man7.org/linux/man-pages/man3/termios.3.html
         raw.c_iflag &= ~(UInt(BRKINT | ICRNL | INPCK | ISTRIP | IXON))
         raw.c_oflag &= ~(UInt(OPOST))
         raw.c_cflag |= UInt(CS8)
@@ -22,8 +23,7 @@ struct RawMode {
         raw.c_cc.17 = 1 // VTIME
 
         if tcsetattr(fileHandle.fileDescriptor, TCSAFLUSH, &raw) == -1 {
-            StandardError.write("tcsetattr")
-            exit(1)
+            exitFailure("tcsetattr")
         }
 
         return original
@@ -32,8 +32,7 @@ struct RawMode {
     static func disable(fileHandle: FileHandle, originalTerm: termios) {
         var term = originalTerm
         if tcsetattr(fileHandle.fileDescriptor, TCSAFLUSH, &term) == -1 {
-            StandardError.write("tcsetattr")
-            exit(1)
+            exitFailure("tcsetattr")
         }
     }
 }
