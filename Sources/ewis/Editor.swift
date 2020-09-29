@@ -108,25 +108,58 @@ class Editor {
     func processKeyPress() {
         let char = readKey()
 
-        switch char {
-        case Config.quitKey:
+        if char == UInt(Character("q").controlKey) {
             refreshScreen()
             RawMode.disable(standardInput: standardInput, originalTerm: term)
             exit(EXIT_SUCCESS)
-        case Config.allowLeft:
-            cursorPosition = CGPoint(x: cursorPosition.x - 1, y: cursorPosition.y)
-        case Config.allowRight:
-            cursorPosition = CGPoint(x: cursorPosition.x + 1, y: cursorPosition.y)
-        case Config.allowUp:
-            cursorPosition = CGPoint(x: cursorPosition.x, y: cursorPosition.y - 1)
-        case Config.allowDown:
-            cursorPosition = CGPoint(x: cursorPosition.x, y: cursorPosition.y + 1)
-        default: break
+        }
+
+        if let editorKey = EditorKey(rawValue: char) {
+            switch editorKey {
+            case .arrowUp:
+                moveCursor(arrowKey: .up)
+            case .arrowDown:
+                moveCursor(arrowKey: .down)
+            case .arrowRight:
+                moveCursor(arrowKey: .right)
+            case .arrowLeft:
+                moveCursor(arrowKey: .left)
+            case .pageUp:
+                moveCursor(arrowKey: .up)
+            case .pageDown:
+                moveCursor(arrowKey: .down)
+            case .home:
+                cursorPosition = CGPoint(x: 0, y: cursorPosition.y)
+            case .end:
+                cursorPosition = CGPoint(x: CGFloat(screenSize.column), y: cursorPosition.y)
+            case .delete: break // TODO
+            }
+        }
+    }
+
+    private func moveCursor(arrowKey: ArrowKey) {
+        switch arrowKey {
+        case .left:
+            if cursorPosition.x > 0 {
+                cursorPosition = CGPoint(x: cursorPosition.x - 1, y: cursorPosition.y)
+            }
+        case .right:
+            if cursorPosition.x < CGFloat(screenSize.column) {
+                cursorPosition = CGPoint(x: cursorPosition.x + 1, y: cursorPosition.y)
+            }
+        case .up:
+            if cursorPosition.y > 0 {
+                cursorPosition = CGPoint(x: cursorPosition.x, y: cursorPosition.y - 1)
+            }
+        case .down:
+            if cursorPosition.y < CGFloat(screenSize.raw) {
+                cursorPosition = CGPoint(x: cursorPosition.x, y: cursorPosition.y + 1)
+            }
         }
     }
 
     @discardableResult
-    private func readKey() -> UInt8 {
+    private func readKey() -> UInt {
         var char: UInt8 = 0x00
 
         while true {
@@ -141,29 +174,67 @@ class Editor {
             var seq: [UInt8] = Array(repeating: 0x00, count: 3)
 
             if read(standardInput.fileDescriptor, &seq[0], 1) != 1 {
-                return Character("\u{1b}").uint8Value
+                return UInt(Character("\u{1b}").uint8Value)
             }
             if read(standardInput.fileDescriptor, &seq[1], 1) != 1 {
-                return Character("\u{1b}").uint8Value
+                return UInt(Character("\u{1b}").uint8Value)
             }
 
             if seq[0] == Character("[").uint8Value {
+                if seq[1] >= Character("0").uint8Value && seq[1] <= Character("9").uint8Value {
+                    if read(standardInput.fileDescriptor, &seq[2], 1) != 1 {
+                        return UInt(Character("\u{1b}").uint8Value)
+                    }
+                    if seq[2] == Character("~").uint8Value {
+                        switch seq[1] {
+                        case Character("1").uint8Value:
+                            return EditorKey.home.rawValue
+                        case Character("3").uint8Value:
+                            return EditorKey.delete.rawValue
+                        case Character("4").uint8Value:
+                            return EditorKey.end.rawValue
+                        case Character("5").uint8Value:
+                            return EditorKey.pageUp.rawValue
+                        case Character("6").uint8Value:
+                            return EditorKey.pageDown.rawValue
+                        case Character("7").uint8Value:
+                            return EditorKey.home.rawValue
+                        case Character("8").uint8Value:
+                            return EditorKey.end.rawValue
+
+                        default: break
+                        }
+                    }
+                } else {
+                    switch seq[1] {
+                    case Character("A").uint8Value:
+                        return EditorKey.arrowUp.rawValue
+                    case Character("B").uint8Value:
+                        return EditorKey.arrowDown.rawValue
+                    case Character("C").uint8Value:
+                        return EditorKey.arrowRight.rawValue
+                    case Character("D").uint8Value:
+                        return EditorKey.arrowLeft.rawValue
+                    case Character("H").uint8Value:
+                        return EditorKey.home.rawValue
+                    case Character("F").uint8Value:
+                        return EditorKey.end.rawValue
+                    default: break
+                    }
+                }
+            } else if seq[0] == Character("O").uint8Value {
                 switch seq[1] {
-                case Character("A").uint8Value:
-                    return Config.allowUp
-                case Character("B").uint8Value:
-                    return Config.allowDown
-                case Character("C").uint8Value:
-                    return Config.allowRight
-                case Character("D").uint8Value:
-                    return Config.allowLeft
+                case Character("H").uint8Value:
+                    return EditorKey.home.rawValue
+                case Character("F").uint8Value:
+                    return EditorKey.end.rawValue
                 default: break
                 }
             }
 
-            return Character("\u{1b}").uint8Value
+            return UInt(Character("\u{1b}").uint8Value)
         } else {
-            return char
+            return UInt(char)
         }
     }
 }
