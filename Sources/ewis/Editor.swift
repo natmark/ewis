@@ -1,6 +1,12 @@
 import Foundation
 
-class Editor {
+protocol EditorProtocol {
+    func refreshScreen()
+    func processKeyPress()
+    func open(_ fileURL: URL)
+}
+
+class Editor: EditorProtocol {
     enum EditorError: Error {
         case couldNotGetWindowSize
         case couldNotGetCursorPosition
@@ -18,8 +24,9 @@ class Editor {
     private var term: termios
     private var screenSize: ScreenMatrix = .zero
     private var cursorPosition: CGPoint = .zero
+    private var content: [String] = []
 
-    init() {
+    private init() {
         standardInput = FileHandle.standardInput
         standardOutput = FileHandle.standardOutput
         term = RawMode.enable(standardInput: standardInput)
@@ -31,66 +38,15 @@ class Editor {
         }
     }
 
-    func getWindowSize() throws -> ScreenMatrix {
-        var ws = winsize()
-        if ioctl(standardOutput.fileDescriptor, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0 {
-            if !writeCommand(standardOutput: standardOutput, command: .moveCursorToBottomTrailing) {
-                throw EditorError.couldNotGetWindowSize
-            }
-            return try getCursorPosition()
-        } else {
-            return ScreenMatrix(raw: ws.ws_row, column: ws.ws_col)
-        }
-    }
-
-    func getCursorPosition() throws -> ScreenMatrix {
-        var buffer: [UInt8] = Array(repeating: 0x00, count: 32)
-
-        if !writeCommand(standardOutput: standardOutput, command: .getCursorPosition) {
-            throw EditorError.couldNotGetCursorPosition
-        }
-
-        for i in 0..<buffer.count - 1 {
-            if read(standardInput.fileDescriptor, &buffer[i], 1) != 1 { break }
-            if buffer[i] == Character("R").key { break }
-        }
-
-        if buffer.count > 2 && (buffer[0] != Character("\u{1b}").uint8Value || buffer[1] != Character("[").uint8Value) {
-            throw EditorError.couldNotGetCursorPosition
-        }
-
-        if
-            let matrix = String(bytes: buffer.dropFirst(2), encoding: .utf8)?.trimmingCharacters(in: .controlCharacters).replacingOccurrences(of: "R", with: "").split(separator: ";"),
-            matrix.count == 2,
-            let raw = UInt16(String(matrix[0])),
-            let column = UInt16(String(matrix[1])) {
-            return .init(raw: raw, column: column)
-        } else {
-            throw EditorError.couldNotGetCursorPosition
-        }
-    }
-
-    func drawRows(bufferWriter: BufferWriter) {
-        for index in 0..<screenSize.raw {
-            if index == screenSize.raw / 3 {
-                let versionString = "ewis -- version \(Version.current.value)"
-                let welcomeMessage = String(versionString.prefix(min(versionString.count, Int(screenSize.column))))
-                let padding = (Int(screenSize.column) - welcomeMessage.count) / 2
-                if padding > 0 {
-                    bufferWriter.append(text: "~")
-                    for _ in 0..<padding - 1 {
-                        bufferWriter.append(text: " ")
-                    }
-                }
-                bufferWriter.append(text: welcomeMessage)
-            } else {
-                bufferWriter.append(text: "~")
-            }
-            bufferWriter.append(command: .eraseInLine)
-
-            if index < screenSize.raw - 1 {
-                bufferWriter.append(text: "\r\n")
-            }
+    func open(_ fileURL: URL) {
+        do {
+            let data = try Data(contentsOf: fileURL)
+            content = String(data: data, encoding: .utf8)?
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .newlines).appending("\0") }
+                ?? []
+        } catch {
+            exitFailure("Could not open \(fileURL.absoluteString)")
         }
     }
 
@@ -133,6 +89,76 @@ class Editor {
             case .end:
                 cursorPosition = CGPoint(x: CGFloat(screenSize.column), y: cursorPosition.y)
             case .delete: break // TODO
+            }
+        }
+    }
+
+    private func getWindowSize() throws -> ScreenMatrix {
+        var ws = winsize()
+        if ioctl(standardOutput.fileDescriptor, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0 {
+            if !writeCommand(standardOutput: standardOutput, command: .moveCursorToBottomTrailing) {
+                throw EditorError.couldNotGetWindowSize
+            }
+            return try getCursorPosition()
+        } else {
+            return ScreenMatrix(raw: ws.ws_row, column: ws.ws_col)
+        }
+    }
+
+    private func getCursorPosition() throws -> ScreenMatrix {
+        var buffer: [UInt8] = Array(repeating: 0x00, count: 32)
+
+        if !writeCommand(standardOutput: standardOutput, command: .getCursorPosition) {
+            throw EditorError.couldNotGetCursorPosition
+        }
+
+        for i in 0..<buffer.count - 1 {
+            if read(standardInput.fileDescriptor, &buffer[i], 1) != 1 { break }
+            if buffer[i] == Character("R").key { break }
+        }
+
+        if buffer.count > 2 && (buffer[0] != Character("\u{1b}").uint8Value || buffer[1] != Character("[").uint8Value) {
+            throw EditorError.couldNotGetCursorPosition
+        }
+
+        if
+            let matrix = String(bytes: buffer.dropFirst(2), encoding: .utf8)?.trimmingCharacters(in: .controlCharacters).replacingOccurrences(of: "R", with: "").split(separator: ";"),
+            matrix.count == 2,
+            let raw = UInt16(String(matrix[0])),
+            let column = UInt16(String(matrix[1])) {
+            return .init(raw: raw, column: column)
+        } else {
+            throw EditorError.couldNotGetCursorPosition
+        }
+    }
+
+    private func drawRows(bufferWriter: BufferWriter) {
+        for index in 0..<screenSize.raw {
+            if index >= content.count {
+                if content.count == 0 && index == screenSize.raw / 3 {
+                    // Show welcome message
+                    let versionString = "ewis -- version \(Version.current.value)"
+                    let welcomeMessage = String(versionString.prefix(min(versionString.count, Int(screenSize.column))))
+                    let padding = (Int(screenSize.column) - welcomeMessage.count) / 2
+                    if padding > 0 {
+                        bufferWriter.append(text: "~")
+                        for _ in 0..<padding - 1 {
+                            bufferWriter.append(text: " ")
+                        }
+                    }
+                    bufferWriter.append(text: welcomeMessage)
+                } else {
+                    bufferWriter.append(text: "~")
+                }
+            } else {
+                let line = content[Int(index)]
+                bufferWriter.append(text: String(line.prefix(min(line.count, Int(screenSize.column)))))
+            }
+
+            bufferWriter.append(command: .eraseInLine)
+
+            if index < screenSize.raw - 1 {
+                bufferWriter.append(text: "\r\n")
             }
         }
     }

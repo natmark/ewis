@@ -1,9 +1,15 @@
 import Foundation
 
 func main() {
+    let editor: EditorProtocol = Editor.shared
+
+    let fileURL = URL(fileURLWithPath: "/Users/atsuya-sato/Desktop/rit/rit.gemspec")
+
+    editor.open(fileURL)
+
     while true {
-        Editor.shared.refreshScreen()
-        Editor.shared.processKeyPress()
+        editor.refreshScreen()
+        editor.processKeyPress()
     }
 }
 
