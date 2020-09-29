@@ -13,9 +13,9 @@ class Editor: EditorProtocol {
     }
 
     struct ScreenMatrix {
-        var raw: UInt16
-        var column: UInt16
-        static var zero: ScreenMatrix = .init(raw: 0, column: 0)
+        var row: Int
+        var column: Int
+        static var zero: ScreenMatrix = .init(row: 0, column: 0)
     }
 
     static let shared = Editor()
@@ -23,8 +23,14 @@ class Editor: EditorProtocol {
     private var standardOutput: FileHandle
     private var term: termios
     private var screenSize: ScreenMatrix = .zero
-    private var cursorPosition: CGPoint = .zero
+    private var cursorPosition: Point = .zero
     private var content: [String] = []
+    private var contentOffset: Point = .zero
+
+    private var cursoredLine: String? {
+        if cursorPosition.y >= content.count { return nil }
+        return content[cursorPosition.y]
+    }
 
     private init() {
         standardInput = FileHandle.standardInput
@@ -51,12 +57,17 @@ class Editor: EditorProtocol {
     }
 
     func refreshScreen() {
+        updateContentOffset()
         let bufferWriter = BufferWriter(standardOutput: standardOutput)
 
         bufferWriter.append(command: .enterResetMode)
         bufferWriter.append(command: .repositionTheCursor)
         drawRows(bufferWriter: bufferWriter)
-        bufferWriter.append(command: .moveCursor(point: cursorPosition))
+        bufferWriter.append(command: .moveCursor(
+            point: Point(x: cursorPosition.x - contentOffset.x + 1,
+                         y: cursorPosition.y - contentOffset.y + 1)
+            )
+        )
         bufferWriter.append(command: .enterSetMode)
         bufferWriter.flush()
     }
@@ -85,11 +96,22 @@ class Editor: EditorProtocol {
             case .pageDown:
                 moveCursor(arrowKey: .down)
             case .home:
-                cursorPosition = CGPoint(x: 0, y: cursorPosition.y)
+                cursorPosition = Point(x: 0, y: cursorPosition.y)
             case .end:
-                cursorPosition = CGPoint(x: CGFloat(screenSize.column), y: cursorPosition.y)
+                cursorPosition = Point(x: screenSize.column, y: cursorPosition.y)
             case .delete: break // TODO
             }
+        }
+    }
+
+    private func updateContentOffset() {
+        contentOffset.y = min(contentOffset.y, cursorPosition.y)
+        contentOffset.x = min(cursorPosition.x, contentOffset.x)
+        if cursorPosition.y >= contentOffset.y + screenSize.row {
+            contentOffset.y = cursorPosition.y - screenSize.row + 1
+        }
+        if cursorPosition.x >= contentOffset.x + screenSize.column {
+            contentOffset.x = cursorPosition.x - screenSize.column + 1
         }
     }
 
@@ -101,7 +123,7 @@ class Editor: EditorProtocol {
             }
             return try getCursorPosition()
         } else {
-            return ScreenMatrix(raw: ws.ws_row, column: ws.ws_col)
+            return ScreenMatrix(row: Int(ws.ws_row), column: Int(ws.ws_col))
         }
     }
 
@@ -124,18 +146,19 @@ class Editor: EditorProtocol {
         if
             let matrix = String(bytes: buffer.dropFirst(2), encoding: .utf8)?.trimmingCharacters(in: .controlCharacters).replacingOccurrences(of: "R", with: "").split(separator: ";"),
             matrix.count == 2,
-            let raw = UInt16(String(matrix[0])),
-            let column = UInt16(String(matrix[1])) {
-            return .init(raw: raw, column: column)
+            let row = Int(String(matrix[0])),
+            let column = Int(String(matrix[1])) {
+            return .init(row: row, column: column)
         } else {
             throw EditorError.couldNotGetCursorPosition
         }
     }
 
     private func drawRows(bufferWriter: BufferWriter) {
-        for index in 0..<screenSize.raw {
-            if index >= content.count {
-                if content.count == 0 && index == screenSize.raw / 3 {
+        for index in 0..<screenSize.row {
+            let fileRow = Int(index) + Int(contentOffset.y)
+            if fileRow >= content.count {
+                if content.count == 0 && index == screenSize.row / 3 {
                     // Show welcome message
                     let versionString = "ewis -- version \(Version.current.value)"
                     let welcomeMessage = String(versionString.prefix(min(versionString.count, Int(screenSize.column))))
@@ -151,13 +174,17 @@ class Editor: EditorProtocol {
                     bufferWriter.append(text: "~")
                 }
             } else {
-                let line = content[Int(index)]
-                bufferWriter.append(text: String(line.prefix(min(line.count, Int(screenSize.column)))))
+                let line = content[Int(fileRow)]
+                let startIndex = line.index(line.startIndex, offsetBy: contentOffset.x)
+                let length = min(max(0, line.count - contentOffset.x), screenSize.column)
+                let endIndex = line.index(startIndex, offsetBy: length)
+
+                bufferWriter.append(text: String(line[startIndex..<endIndex]))
             }
 
             bufferWriter.append(command: .eraseInLine)
 
-            if index < screenSize.raw - 1 {
+            if index < screenSize.row - 1 {
                 bufferWriter.append(text: "\r\n")
             }
         }
@@ -167,21 +194,23 @@ class Editor: EditorProtocol {
         switch arrowKey {
         case .left:
             if cursorPosition.x > 0 {
-                cursorPosition = CGPoint(x: cursorPosition.x - 1, y: cursorPosition.y)
+                cursorPosition = Point(x: cursorPosition.x - 1, y: cursorPosition.y)
             }
         case .right:
-            if cursorPosition.x < CGFloat(screenSize.column) {
-                cursorPosition = CGPoint(x: cursorPosition.x + 1, y: cursorPosition.y)
+            if let cursoredLine = cursoredLine, cursorPosition.x < cursoredLine.count - 1 {
+                cursorPosition = Point(x: cursorPosition.x + 1, y: cursorPosition.y)
             }
         case .up:
             if cursorPosition.y > 0 {
-                cursorPosition = CGPoint(x: cursorPosition.x, y: cursorPosition.y - 1)
+                cursorPosition = Point(x: cursorPosition.x, y: cursorPosition.y - 1)
             }
         case .down:
-            if cursorPosition.y < CGFloat(screenSize.raw) {
-                cursorPosition = CGPoint(x: cursorPosition.x, y: cursorPosition.y + 1)
+            if cursorPosition.y < content.count - 1 {
+                cursorPosition = Point(x: cursorPosition.x, y: cursorPosition.y + 1)
             }
         }
+
+        cursorPosition.x = min(cursorPosition.x, cursoredLine?.count ?? 0)
     }
 
     @discardableResult

@@ -12,7 +12,7 @@ enum Command {
     case repositionTheCursor
     case enterSetMode
     case enterResetMode
-    case moveCursor(point: CGPoint)
+    case moveCursor(point: Point)
 
     var rawValue: String {
         switch self {
