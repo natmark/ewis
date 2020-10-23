@@ -175,11 +175,16 @@ class Editor: EditorProtocol {
                 }
             } else {
                 let line = content[Int(fileRow)]
-                let startIndex = line.index(line.startIndex, offsetBy: contentOffset.x)
                 let length = min(max(0, line.count - contentOffset.x), screenSize.column)
-                let endIndex = line.index(startIndex, offsetBy: length)
 
-                bufferWriter.append(text: String(line[startIndex..<endIndex]))
+                if line.count <= contentOffset.x {
+                    bufferWriter.append(text: "\0")
+                } else {
+                    let startIndex = line.index(line.startIndex, offsetBy: contentOffset.x)
+                    let endIndex = line.index(startIndex, offsetBy: length)
+
+                    bufferWriter.append(text: String(line[startIndex..<endIndex]))
+                }
             }
 
             bufferWriter.append(command: .eraseInLine)
@@ -195,10 +200,19 @@ class Editor: EditorProtocol {
         case .left:
             if cursorPosition.x > 0 {
                 cursorPosition = Point(x: cursorPosition.x - 1, y: cursorPosition.y)
+            } else if cursorPosition.y > 0 {
+                cursorPosition = Point(x: cursorPosition.x, y: cursorPosition.y - 1)
+                if let cursoredLine = cursoredLine {
+                    cursorPosition = Point(x: cursoredLine.count, y: cursorPosition.y)
+                }
             }
         case .right:
-            if let cursoredLine = cursoredLine, cursorPosition.x < cursoredLine.count - 1 {
-                cursorPosition = Point(x: cursorPosition.x + 1, y: cursorPosition.y)
+            if let cursoredLine = cursoredLine {
+                if cursorPosition.x < cursoredLine.count {
+                    cursorPosition = Point(x: cursorPosition.x + 1, y: cursorPosition.y)
+                } else if cursorPosition.x == cursoredLine.count {
+                    cursorPosition = Point(x: 0, y: cursorPosition.y + 1)
+                }
             }
         case .up:
             if cursorPosition.y > 0 {
