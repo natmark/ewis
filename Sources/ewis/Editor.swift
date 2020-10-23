@@ -19,12 +19,16 @@ class Editor: EditorProtocol {
     }
 
     static let shared = Editor()
+
+    private static let tabSize = 4
     private var standardInput: FileHandle
     private var standardOutput: FileHandle
     private var term: termios
     private var screenSize: ScreenMatrix = .zero
+    private var renderingPosition: Point = .zero
     private var cursorPosition: Point = .zero
     private var content: [String] = []
+    private var renderingContent: [String] = []
     private var contentOffset: Point = .zero
 
     private var cursoredLine: String? {
@@ -51,6 +55,9 @@ class Editor: EditorProtocol {
                 .components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .newlines).appending("\0") }
                 ?? []
+
+            renderingContent = content
+                .map { $0.replacingOccurrences(of: "\t", with: Array(repeating: " ", count: Self.tabSize).joined())}
         } catch {
             exitFailure("Could not open \(fileURL.absoluteString)")
         }
@@ -64,7 +71,7 @@ class Editor: EditorProtocol {
         bufferWriter.append(command: .repositionTheCursor)
         drawRows(bufferWriter: bufferWriter)
         bufferWriter.append(command: .moveCursor(
-            point: Point(x: cursorPosition.x - contentOffset.x + 1,
+            point: Point(x: renderingPosition.x - contentOffset.x + 1,
                          y: cursorPosition.y - contentOffset.y + 1)
             )
         )
@@ -92,26 +99,49 @@ class Editor: EditorProtocol {
             case .arrowLeft:
                 moveCursor(arrowKey: .left)
             case .pageUp:
-                moveCursor(arrowKey: .up)
+                contentOffset.y = contentOffset.y
             case .pageDown:
-                moveCursor(arrowKey: .down)
+                cursorPosition.y = contentOffset.y + screenSize.row - 1
+                cursorPosition.y = min(screenSize.row, cursorPosition.y)
             case .home:
-                cursorPosition = Point(x: 0, y: cursorPosition.y)
+                cursorPosition.x = 0
             case .end:
-                cursorPosition = Point(x: screenSize.column, y: cursorPosition.y)
+                if let cursoredLine = cursoredLine {
+                    cursorPosition.x = cursoredLine.count
+                }
             case .delete: break // TODO
             }
         }
     }
 
+    private func updateRenderingPosition() {
+        guard let cursoredLine = cursoredLine else { return }
+
+        var rx = 0
+        for i in 0..<cursorPosition.x {
+            if cursoredLine[cursoredLine.index(cursoredLine.startIndex, offsetBy: i)] == "\t" {
+                rx += (Self.tabSize - 1) - (rx % Self.tabSize)
+            }
+            rx += 1
+        }
+
+        renderingPosition.x = rx
+    }
+
+
     private func updateContentOffset() {
+        renderingPosition.x = 0
+        if cursorPosition.y < screenSize.row {
+            updateRenderingPosition()
+        }
+
         contentOffset.y = min(contentOffset.y, cursorPosition.y)
-        contentOffset.x = min(cursorPosition.x, contentOffset.x)
         if cursorPosition.y >= contentOffset.y + screenSize.row {
             contentOffset.y = cursorPosition.y - screenSize.row + 1
         }
-        if cursorPosition.x >= contentOffset.x + screenSize.column {
-            contentOffset.x = cursorPosition.x - screenSize.column + 1
+        contentOffset.x = min(renderingPosition.x, contentOffset.x)
+        if renderingPosition.x >= contentOffset.x + screenSize.column {
+            contentOffset.x = renderingPosition.x - screenSize.column + 1
         }
     }
 
@@ -199,28 +229,29 @@ class Editor: EditorProtocol {
         switch arrowKey {
         case .left:
             if cursorPosition.x > 0 {
-                cursorPosition = Point(x: cursorPosition.x - 1, y: cursorPosition.y)
+                cursorPosition.x -= 1
             } else if cursorPosition.y > 0 {
-                cursorPosition = Point(x: cursorPosition.x, y: cursorPosition.y - 1)
+                cursorPosition.y -= 1
                 if let cursoredLine = cursoredLine {
-                    cursorPosition = Point(x: cursoredLine.count, y: cursorPosition.y)
+                    cursorPosition.x = cursoredLine.count
                 }
             }
         case .right:
             if let cursoredLine = cursoredLine {
                 if cursorPosition.x < cursoredLine.count {
-                    cursorPosition = Point(x: cursorPosition.x + 1, y: cursorPosition.y)
+                    cursorPosition.x += 1
                 } else if cursorPosition.x == cursoredLine.count {
-                    cursorPosition = Point(x: 0, y: cursorPosition.y + 1)
+                    cursorPosition.x = 0
+                    cursorPosition.y += 1
                 }
             }
         case .up:
             if cursorPosition.y > 0 {
-                cursorPosition = Point(x: cursorPosition.x, y: cursorPosition.y - 1)
+                cursorPosition.y -= 1
             }
         case .down:
             if cursorPosition.y < content.count - 1 {
-                cursorPosition = Point(x: cursorPosition.x, y: cursorPosition.y + 1)
+                cursorPosition.y += 1
             }
         }
 
