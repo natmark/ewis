@@ -2,7 +2,7 @@ import Foundation
 
 func main() {
     let editor: EditorProtocol = Editor.shared
-    let fileURL = URL(fileURLWithPath: "/Users/atsuya-sato/Desktop/rit/rit.gemspec")
+    let fileURL = URL(fileURLWithPath: "/Users/atsuya-sato/Desktop/test.txt")
 
     editor.open(fileURL)
 

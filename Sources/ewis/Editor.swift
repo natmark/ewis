@@ -66,11 +66,10 @@ class Editor: EditorProtocol {
             let data = try Data(contentsOf: fileURL)
             content = String(data: data, encoding: .utf8)?
                 .components(separatedBy: .newlines)
-                .map { $0.trimmingCharacters(in: .newlines).appending("\0") }
+                .map { $0.trimmingCharacters(in: .newlines) }
                 ?? []
 
-            renderingContent = content
-                .map { $0.replacingOccurrences(of: "\t", with: Array(repeating: " ", count: Self.tabSize).joined())}
+            updateRow()
         } catch {
             exitFailure("Could not open \(fileURL.absoluteString)")
         }
@@ -111,7 +110,7 @@ class Editor: EditorProtocol {
         case UInt(Character("s").controlKey): // Save
             save()
         case UInt(Character("\r").uint8Value): // Enter
-            // TODO
+            insertNewLine()
             break
         case EditorKey.arrowUp.rawValue:
             moveCursor(arrowKey: .up)
@@ -139,14 +138,12 @@ class Editor: EditorProtocol {
                 cursorPosition.x = cursoredLine.count
             }
         case EditorKey.delete.rawValue:
-            // TODO
-            break
+            moveCursor(arrowKey: .right)
+            deleteChar()
         case EditorKey.backspace.rawValue:
-            // TODO
-            break
+            deleteChar()
         case UInt(Character("h").controlKey): // (Mapping to backspace)
-            // Todo
-            break
+            deleteChar()
         case UInt(Character("l").controlKey): // Ignore Ctrl-L
             break
         case UInt(Character("\u{1b}").uint8Value): // Ignore Escape sequence
@@ -179,6 +176,50 @@ class Editor: EditorProtocol {
                 setStatusMessage(statusMessage: "Can't save! I/O error: \(error.localizedDescription)")
             }
         }
+    }
+
+    private func updateRow() {
+        renderingContent = content
+            .map { $0.replacingOccurrences(of: "\t", with: Array(repeating: " ", count: Self.tabSize).joined())}
+    }
+
+    private func deleteChar() {
+        if cursorPosition.y == content.count { return }
+        if cursorPosition.x == 0 && cursorPosition.y == 0 { return }
+        guard let cursoredLine = cursoredLine else { return }
+
+        if cursorPosition.x > 0 {
+            let removePosition = cursorPosition.x - 1
+            if removePosition < 0 || removePosition >= cursoredLine.count { return }
+            content[cursorPosition.y].remove(at: cursoredLine.index(cursoredLine.startIndex, offsetBy: removePosition))
+            updateRow()
+            cursorPosition.x -= 1
+        } else {
+            cursorPosition.x = content[cursorPosition.y - 1].count
+            content[cursorPosition.y - 1].append(cursoredLine)
+            content.remove(at: cursorPosition.y)
+            updateRow()
+            cursorPosition.y -= 1
+        }
+
+        dirty = true
+    }
+
+    private func insertNewLine() {
+        if cursorPosition.x == 0 {
+            content.insert("", at: cursorPosition.y)
+        } else {
+            if let cursoredLine = cursoredLine {
+                let prefixString = String(cursoredLine.prefix(cursorPosition.x))
+                let suffixString = String(cursoredLine.suffix(cursoredLine.count - prefixString.count))
+                content[cursorPosition.y] = prefixString
+                content.insert(suffixString, at: cursorPosition.y + 1)
+                updateRow()
+            }
+        }
+
+        cursorPosition.y += 1
+        cursorPosition.x = 0
     }
 
     private func insertChar(char: UInt) {
