@@ -93,41 +93,54 @@ class Editor: EditorProtocol {
     func processKeyPress() {
         let char = readKey()
 
-        if char == UInt(Character("q").controlKey) {
+        switch char {
+        case UInt(Character("q").controlKey): // Exit
             refreshScreen()
             RawMode.disable(standardInput: standardInput, originalTerm: term)
             exit(EXIT_SUCCESS)
-        }
-
-        if let editorKey = EditorKey(rawValue: char) {
-            switch editorKey {
-            case .arrowUp:
+        case UInt(Character("\r").uint8Value): // Enter
+            // TODO
+            break
+        case EditorKey.arrowUp.rawValue:
+            moveCursor(arrowKey: .up)
+        case EditorKey.arrowDown.rawValue:
+            moveCursor(arrowKey: .down)
+        case EditorKey.arrowRight.rawValue:
+            moveCursor(arrowKey: .right)
+        case EditorKey.arrowLeft.rawValue:
+            moveCursor(arrowKey: .left)
+        case EditorKey.pageUp.rawValue:
+            cursorPosition.y = contentOffset.y
+            for _ in 0..<screenSize.row {
                 moveCursor(arrowKey: .up)
-            case .arrowDown:
-                moveCursor(arrowKey: .down)
-            case .arrowRight:
-                moveCursor(arrowKey: .right)
-            case .arrowLeft:
-                moveCursor(arrowKey: .left)
-            case .pageUp:
-                cursorPosition.y = contentOffset.y
-                for _ in 0..<screenSize.row {
-                    moveCursor(arrowKey: .up)
-                }
-            case .pageDown:
-                cursorPosition.y = contentOffset.y + screenSize.row - 1
-                cursorPosition.y = min(content.count, cursorPosition.y)
-                for _ in 0..<screenSize.row {
-                    moveCursor(arrowKey: .down)
-                }
-            case .home:
-                cursorPosition.x = 0
-            case .end:
-                if let cursoredLine = cursoredLine {
-                    cursorPosition.x = cursoredLine.count
-                }
-            case .delete: break // TODO
             }
+        case EditorKey.pageDown.rawValue:
+            cursorPosition.y = contentOffset.y + screenSize.row - 1
+            cursorPosition.y = min(content.count, cursorPosition.y)
+            for _ in 0..<screenSize.row {
+                moveCursor(arrowKey: .down)
+            }
+        case EditorKey.home.rawValue:
+            cursorPosition.x = 0
+        case EditorKey.end.rawValue:
+            if let cursoredLine = cursoredLine {
+                cursorPosition.x = cursoredLine.count
+            }
+        case EditorKey.delete.rawValue:
+            // TODO
+            break
+        case EditorKey.backspace.rawValue:
+            // TODO
+            break
+        case UInt(Character("h").controlKey): // (Mapping to backspace)
+            // Todo
+            break
+        case UInt(Character("l").controlKey): // Ignore Ctrl-L
+            break
+        case UInt(Character("\u{1b}").uint8Value): // Ignore Escape sequence
+            break
+        default:
+            insertChar(char: char)
         }
     }
 
@@ -135,6 +148,27 @@ class Editor: EditorProtocol {
         self.statusMessage = statusMessage
         self.statusMessageTriggeredAt = Date()
     }
+
+    private func insertChar(char: UInt) {
+        if cursorPosition.y == content.count {
+            content.append("")
+        }
+
+        guard let cursoredLine = cursoredLine,
+            let str = String(bytes: [UInt8(char)], encoding: .utf8) else { return }
+
+        let insertAt: Int
+        if cursorPosition.x < 0 || cursorPosition.x > cursoredLine.count {
+            insertAt = cursoredLine.count
+        } else {
+            insertAt = cursorPosition.x
+        }
+
+        content[cursorPosition.y].insert(contentsOf: str, at: cursoredLine.index(cursoredLine.startIndex, offsetBy: insertAt))
+
+        cursorPosition.x += 1
+    }
+
 
     private func updateRenderingPosition() {
         guard let cursoredLine = cursoredLine else { return }
