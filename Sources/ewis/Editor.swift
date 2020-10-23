@@ -104,7 +104,12 @@ class Editor: EditorProtocol {
                 quitTimes += 1
                 return
             }
-            refreshScreen()
+
+            let bufferWriter = BufferWriter(standardOutput: standardOutput)
+            bufferWriter.append(command: .eraseInDisplay)
+            bufferWriter.append(command: .repositionTheCursor)
+            bufferWriter.flush()
+
             RawMode.disable(standardInput: standardInput, originalTerm: term)
             exit(EXIT_SUCCESS)
         case UInt(Character("s").controlKey): // Save
