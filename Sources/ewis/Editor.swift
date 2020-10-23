@@ -110,10 +110,16 @@ class Editor: EditorProtocol {
             case .arrowLeft:
                 moveCursor(arrowKey: .left)
             case .pageUp:
-                contentOffset.y = contentOffset.y
+                cursorPosition.y = contentOffset.y
+                for _ in 0..<screenSize.row {
+                    moveCursor(arrowKey: .up)
+                }
             case .pageDown:
                 cursorPosition.y = contentOffset.y + screenSize.row - 1
-                cursorPosition.y = min(screenSize.row, cursorPosition.y)
+                cursorPosition.y = min(content.count, cursorPosition.y)
+                for _ in 0..<screenSize.row {
+                    moveCursor(arrowKey: .down)
+                }
             case .home:
                 cursorPosition.x = 0
             case .end:
