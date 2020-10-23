@@ -1,10 +1,18 @@
 .DEFAULT_GOAL := build
 
 xcode:
-		swift package generate-xcodeproj
+	swift package generate-xcodeproj
 build:
-		swift build
+	swift build
 test:
-		swift test
+	swift test
 run:
-		swift run
+	swift run
+release:
+	swift build -c release
+
+INSTALL_DIR = /usr/local/bin
+
+install: release
+	mkdir -p "$(INSTALL_DIR)"
+	cp -f ".build/release/ewis" "$(INSTALL_DIR)/ewis"
