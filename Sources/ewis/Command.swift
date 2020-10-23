@@ -13,6 +13,7 @@ enum Command {
     case enterSetMode
     case enterResetMode
     case moveCursor(point: Point)
+    case selectGraphicRendition(parameter: GraphicRenditionParameter)
 
     var rawValue: String {
         switch self {
@@ -32,6 +33,22 @@ enum Command {
             return "\u{1b}[?25l"
         case .moveCursor(let point):
             return "\u{1b}[\(Int(point.y));\(Int(point.x))H"
+        case .selectGraphicRendition(let parameter):
+            return parameter.rawValue
+        }
+    }
+
+    enum GraphicRenditionParameter {
+        case negative // invert
+        case attributesOff
+
+        var rawValue: String {
+            switch self {
+            case .negative:
+                return "\u{1b}[7m"
+            case .attributesOff:
+                return "\u{1b}[m"
+            }
         }
     }
 }

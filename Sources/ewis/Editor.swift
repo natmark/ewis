@@ -4,6 +4,7 @@ protocol EditorProtocol {
     func refreshScreen()
     func processKeyPress()
     func open(_ fileURL: URL)
+    func setStatusMessage(statusMessage: String)
 }
 
 class Editor: EditorProtocol {
@@ -21,6 +22,12 @@ class Editor: EditorProtocol {
     static let shared = Editor()
 
     private static let tabSize = 4
+    private static let statusMessageShowingDuration = 5 //sec
+
+    private var statusMessage: String = ""
+    private var statusMessageTriggeredAt: Date?
+
+    private var fileURL: URL?
     private var standardInput: FileHandle
     private var standardOutput: FileHandle
     private var term: termios
@@ -42,6 +49,7 @@ class Editor: EditorProtocol {
         term = RawMode.enable(standardInput: standardInput)
         do {
             screenSize = try getWindowSize()
+            screenSize.row -= 2 // Status bar & Status message
         } catch {
             exitFailure("getWindowSize")
             fatalError()
@@ -50,6 +58,7 @@ class Editor: EditorProtocol {
 
     func open(_ fileURL: URL) {
         do {
+            self.fileURL = fileURL
             let data = try Data(contentsOf: fileURL)
             content = String(data: data, encoding: .utf8)?
                 .components(separatedBy: .newlines)
@@ -70,6 +79,8 @@ class Editor: EditorProtocol {
         bufferWriter.append(command: .enterResetMode)
         bufferWriter.append(command: .repositionTheCursor)
         drawRows(bufferWriter: bufferWriter)
+        drawStatusBar(bufferWriter: bufferWriter)
+        drawMessageBar(bufferWriter: bufferWriter)
         bufferWriter.append(command: .moveCursor(
             point: Point(x: renderingPosition.x - contentOffset.x + 1,
                          y: cursorPosition.y - contentOffset.y + 1)
@@ -112,6 +123,11 @@ class Editor: EditorProtocol {
             case .delete: break // TODO
             }
         }
+    }
+
+    func setStatusMessage(statusMessage: String) {
+        self.statusMessage = statusMessage
+        self.statusMessageTriggeredAt = Date()
     }
 
     private func updateRenderingPosition() {
@@ -184,6 +200,33 @@ class Editor: EditorProtocol {
         }
     }
 
+    private func drawStatusBar(bufferWriter: BufferWriter) {
+        bufferWriter.append(command: .selectGraphicRendition(parameter: .negative))
+        let statusMessage = String("\(fileURL?.path ?? "[No Name]") - \(content.count) lines".prefix(screenSize.column))
+        let currentLine = "\(cursorPosition.y + 1)/\(content.count)"
+
+        bufferWriter.append(text: statusMessage)
+
+        for index in statusMessage.count..<screenSize.column {
+            if screenSize.column - index == currentLine.count {
+                bufferWriter.append(text: currentLine)
+                break
+            } else {
+                bufferWriter.append(text: " ")
+            }
+        }
+        bufferWriter.append(command: .selectGraphicRendition(parameter: .attributesOff))
+        bufferWriter.append(text: "\r\n")
+    }
+
+    private func drawMessageBar(bufferWriter: BufferWriter) {
+        bufferWriter.append(command: .eraseInLine)
+
+        if let triggeredAt = statusMessageTriggeredAt, Int(Date().timeIntervalSince(triggeredAt)) < Self.statusMessageShowingDuration {
+            bufferWriter.append(text: String(statusMessage.prefix(screenSize.column)))
+        }
+    }
+
     private func drawRows(bufferWriter: BufferWriter) {
         for index in 0..<screenSize.row {
             let fileRow = Int(index) + Int(contentOffset.y)
@@ -218,10 +261,7 @@ class Editor: EditorProtocol {
             }
 
             bufferWriter.append(command: .eraseInLine)
-
-            if index < screenSize.row - 1 {
-                bufferWriter.append(text: "\r\n")
-            }
+            bufferWriter.append(text: "\r\n")
         }
     }
 

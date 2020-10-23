@@ -6,6 +6,8 @@ func main() {
 
     editor.open(fileURL)
 
+    editor.setStatusMessage(statusMessage: "HELP: Ctrl-Q = quit")
+
     while true {
         editor.refreshScreen()
         editor.processKeyPress()
