@@ -1,17 +1,30 @@
 import Foundation
+import ArgumentParser
 
-func main() {
-    let editor: EditorProtocol = Editor.shared
-    let fileURL = URL(fileURLWithPath: "/Users/atsuya-sato/Desktop/test.txt")
+struct Ewis: ParsableCommand {
+    static var configuration = CommandConfiguration(
+        commandName: "ewis",
+        abstract: "Editor written in Swift",
+        version: Version.current.value,
+        shouldDisplay: true,
+        helpNames: [.long, .short]
+    )
 
-    editor.open(fileURL)
+    @Argument(help: "edit specified file")
+    var filePath: String
 
-    editor.setStatusMessage(statusMessage: "HELP: Ctrl-Q = quit")
+    mutating func run() throws {
+        let editor: EditorProtocol = Editor.shared
 
-    while true {
-        editor.refreshScreen()
-        editor.processKeyPress()
+        editor.open(URL(fileURLWithPath: filePath))
+
+        editor.setStatusMessage(statusMessage: "HELP: Ctrl-Q = quit")
+
+        while true {
+            editor.refreshScreen()
+            editor.processKeyPress()
+        }
     }
 }
 
-main()
+Ewis.main()
