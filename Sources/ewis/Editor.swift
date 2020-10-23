@@ -4,6 +4,7 @@ protocol EditorProtocol {
     func refreshScreen()
     func processKeyPress()
     func open(_ fileURL: URL)
+    func save()
     func setStatusMessage(statusMessage: String)
 }
 
@@ -21,12 +22,15 @@ class Editor: EditorProtocol {
 
     static let shared = Editor()
 
+    private static let confirmUnsaveTimes = 3
     private static let tabSize = 4
     private static let statusMessageShowingDuration = 5 //sec
 
     private var statusMessage: String = ""
     private var statusMessageTriggeredAt: Date?
 
+    private var quitTimes: Int = 0
+    private var dirty: Bool = false
     private var fileURL: URL?
     private var standardInput: FileHandle
     private var standardOutput: FileHandle
@@ -70,6 +74,7 @@ class Editor: EditorProtocol {
         } catch {
             exitFailure("Could not open \(fileURL.absoluteString)")
         }
+        dirty = false
     }
 
     func refreshScreen() {
@@ -95,9 +100,16 @@ class Editor: EditorProtocol {
 
         switch char {
         case UInt(Character("q").controlKey): // Exit
+            if dirty && quitTimes < Self.confirmUnsaveTimes {
+                setStatusMessage(statusMessage: "WARNING!!! File has unsaved changes. Press Ctrl-Q \(Self.confirmUnsaveTimes - quitTimes) more times to quit.")
+                quitTimes += 1
+                return
+            }
             refreshScreen()
             RawMode.disable(standardInput: standardInput, originalTerm: term)
             exit(EXIT_SUCCESS)
+        case UInt(Character("s").controlKey): // Save
+            save()
         case UInt(Character("\r").uint8Value): // Enter
             // TODO
             break
@@ -142,11 +154,31 @@ class Editor: EditorProtocol {
         default:
             insertChar(char: char)
         }
+
+        quitTimes = 0
     }
 
     func setStatusMessage(statusMessage: String) {
         self.statusMessage = statusMessage
         self.statusMessageTriggeredAt = Date()
+    }
+
+    func save() {
+        if let fileURL = fileURL {
+            do {
+                let outputString = content.joined(separator: "\n")
+                    .trimmingCharacters(in: .controlCharacters)
+                    .trimmingCharacters(in: .illegalCharacters)
+                    .trimmingCharacters(in: .nonBaseCharacters)
+                    .replacingOccurrences(of: "\0", with: "")
+
+                try outputString.write(to: fileURL, atomically: true, encoding: .utf8)
+                dirty = false
+                setStatusMessage(statusMessage: "\(outputString.utf8.count) bytes written to disk")
+            } catch {
+                setStatusMessage(statusMessage: "Can't save! I/O error: \(error.localizedDescription)")
+            }
+        }
     }
 
     private func insertChar(char: UInt) {
@@ -167,6 +199,7 @@ class Editor: EditorProtocol {
         content[cursorPosition.y].insert(contentsOf: str, at: cursoredLine.index(cursoredLine.startIndex, offsetBy: insertAt))
 
         cursorPosition.x += 1
+        dirty = true
     }
 
 
@@ -242,7 +275,7 @@ class Editor: EditorProtocol {
 
     private func drawStatusBar(bufferWriter: BufferWriter) {
         bufferWriter.append(command: .selectGraphicRendition(parameter: .negative))
-        let statusMessage = String("\(fileURL?.path ?? "[No Name]") - \(content.count) lines".prefix(screenSize.column))
+        let statusMessage = String("\(fileURL?.path ?? "[No Name]") - \(content.count) lines \(dirty ? "(modified)" : "")".prefix(screenSize.column))
         let currentLine = "\(cursorPosition.y + 1)/\(content.count)"
 
         bufferWriter.append(text: statusMessage)
