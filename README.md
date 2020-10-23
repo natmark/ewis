@@ -8,7 +8,7 @@ terminal-based text editor written in swift
 ## Instalation
 
 - Clone this repository
-  - `$ git clone git@github.com:natmark/Gift.git`
+  - `$ git clone git@github.com:natmark/ewis.git`
 
 - Build from source and locate binary to `/usr/local/bin/`
   - `$ make install`
