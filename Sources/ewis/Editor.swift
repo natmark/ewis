@@ -168,11 +168,13 @@ class Editor: EditorProtocol {
     func save() {
         if let fileURL = fileURL {
             do {
-                let outputString = content.joined(separator: "\n")
+                let outputString = content.map { $0.trimmingCharacters(in: .newlines) }
+                    .joined(separator: "\n")
                     .trimmingCharacters(in: .controlCharacters)
                     .trimmingCharacters(in: .illegalCharacters)
                     .trimmingCharacters(in: .nonBaseCharacters)
                     .replacingOccurrences(of: "\0", with: "")
+                    .appending("\n")
 
                 try outputString.write(to: fileURL, atomically: true, encoding: .utf8)
                 dirty = false
